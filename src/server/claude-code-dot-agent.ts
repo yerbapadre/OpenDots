@@ -90,11 +90,11 @@ export class ClaudeCodeDotAgent extends AbstractAgent {
               permissionMode: 'default',
               abortController: controller,
               canUseTool: async (toolName, toolInput) =>
-                toolName.startsWith('mcp__dot__')
+                toolName.startsWith('mcp__')
                   ? { behavior: 'allow', updatedInput: toolInput }
                   : {
                       behavior: 'deny',
-                      message: "Only this Dot's own data tools are enabled.",
+                      message: "Only this Dot's own tools are enabled.",
                     },
               ...(resume ? { resume } : {}),
             },
