@@ -7,11 +7,8 @@ type ComputerAction = keyof typeof computerInputs;
 const EXPOSED = (name: string) =>
   !name.startsWith('human_') && name !== 'exec';
 
-export function createComputerMcpServer(
-  dotId: string,
-  service: ComputerService,
-) {
-  const tools = Object.entries(computerInputs)
+export function computerToolDefs(dotId: string, service: ComputerService) {
+  return Object.entries(computerInputs)
     .filter(([name]) => EXPOSED(name))
     .map(([name, schema]) =>
       tool(
@@ -33,6 +30,15 @@ export function createComputerMcpServer(
         },
       ),
     );
+}
 
-  return createSdkMcpServer({ name: 'computer', version: '0.1.0', tools });
+export function createComputerMcpServer(
+  dotId: string,
+  service: ComputerService,
+) {
+  return createSdkMcpServer({
+    name: 'computer',
+    version: '0.1.0',
+    tools: computerToolDefs(dotId, service),
+  });
 }
