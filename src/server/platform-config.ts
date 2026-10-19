@@ -74,6 +74,7 @@ export interface PlatformConfig extends WebConfig {
   runtimeUrl: string;
   ownerToken?: string;
   localRuntime?: boolean;
+  cliAgent?: boolean;
 }
 export function setupStatus(
   config: PlatformConfig,

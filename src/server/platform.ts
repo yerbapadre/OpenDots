@@ -16,6 +16,7 @@ import { Store } from './store.js';
 import { WorkspaceStore } from './workspace.js';
 import { DotAgent } from './dot-agent.js';
 import { ClaudeCodeDotAgent } from './claude-code-dot-agent.js';
+import { ClaudeCliDotAgent } from './claude-cli-dot-agent.js';
 import { runThreadTurn } from './headless.js';
 import {
   INTELLIGENCE_KEY_MISSING_LABEL,
@@ -58,7 +59,14 @@ export class Platform {
               .dots()
               .map((dot) => [
                 dot.id,
-                new ClaudeCodeDotAgent(dot, config, workspace, this.computers),
+                config.cliAgent
+                  ? new ClaudeCliDotAgent(dot, config, workspace, this.computers)
+                  : new ClaudeCodeDotAgent(
+                      dot,
+                      config,
+                      workspace,
+                      this.computers,
+                    ),
               ]),
           ),
       });

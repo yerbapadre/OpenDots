@@ -34,6 +34,7 @@ const workspace = new WorkspaceStore(
 const config: PlatformConfig = {
   intelligenceKey: intelligenceApiKeyFromEnv(process.env),
   localRuntime: !intelligenceApiKeyFromEnv(process.env),
+  cliAgent: process.env.DOTS_AGENT === 'cli',
   intelligenceApiUrl: process.env.INTELLIGENCE_API_URL || undefined,
   intelligenceWsUrl: intelligenceWsUrlFromEnv(process.env),
   apiKey: process.env.OPENAI_API_KEY,
