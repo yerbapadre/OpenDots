@@ -112,6 +112,7 @@ export class ClaudeCliDotAgent extends AbstractAgent {
 
       const childEnv = { ...process.env };
       delete childEnv.ANTHROPIC_API_KEY;
+      childEnv.MCP_TIMEOUT = childEnv.MCP_TIMEOUT ?? '60000';
 
       emit({
         type: EventType.RUN_STARTED,

@@ -64,6 +64,9 @@ const config: PlatformConfig = {
   ownerToken,
 };
 process.env.COPILOTKIT_TELEMETRY_DISABLED ??= 'true';
+console.log(
+  `[dots] DOTS_AGENT=${JSON.stringify(process.env.DOTS_AGENT)} -> ${config.cliAgent ? 'cli (subscription)' : 'sdk (api key)'} agent`,
+);
 const platform = new Platform(store, workspace, config);
 const researchConfig = {
   mode: 'live' as const,
