@@ -2279,7 +2279,7 @@ h3 {
 .chat-compose-row textarea {
   border: 0;
   background: transparent;
-  padding: 10px 3px;
+  padding: 10px 12px;
   resize: none;
   font-size: 12px;
   min-height: 43px;
