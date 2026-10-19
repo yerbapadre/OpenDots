@@ -5,13 +5,10 @@ import { type BaseEvent, type RunAgentInput, EventType } from '@ag-ui/core';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { Dot } from '../shared/types.js';
 import type { PlatformConfig } from './platform-config.js';
+import type { WorkspaceStore } from './workspace.js';
+import { createDotMcpServer } from './dot-tools.js';
 
 const DEFAULT_MODEL = 'claude-opus-4-8';
-
-export interface ThreadSessionStore {
-  getThreadSession(threadId: string): string | undefined;
-  setThreadSession(threadId: string, sessionId: string): void;
-}
 
 function latestUserText(messages: RunAgentInput['messages']): string {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -34,13 +31,13 @@ export class ClaudeCodeDotAgent extends AbstractAgent {
   constructor(
     private readonly dot: Dot,
     private readonly platformConfig: PlatformConfig,
-    private readonly sessions: ThreadSessionStore,
+    private readonly workspace: WorkspaceStore,
   ) {
     super({ agentId: dot.id });
   }
 
   clone() {
-    return new ClaudeCodeDotAgent(this.dot, this.platformConfig, this.sessions);
+    return new ClaudeCodeDotAgent(this.dot, this.platformConfig, this.workspace);
   }
 
   abortRun() {
@@ -51,7 +48,7 @@ export class ClaudeCodeDotAgent extends AbstractAgent {
     return new Observable<BaseEvent>((subscriber) => {
       const controller = new AbortController();
       this.controller = controller;
-      const resume = this.sessions.getThreadSession(input.threadId);
+      const resume = this.workspace.getThreadSession(input.threadId);
 
       const emit = (event: Record<string, unknown>) =>
         subscriber.next(event as BaseEvent);
@@ -71,39 +68,62 @@ export class ClaudeCodeDotAgent extends AbstractAgent {
               model: DEFAULT_MODEL,
               systemPrompt: this.dot.instructions,
               settingSources: [],
-              allowedTools: [],
+              mcpServers: {
+                dot: createDotMcpServer(this.dot, this.workspace),
+              },
+              allowedTools: [
+                'mcp__dot__list_spaces',
+                'mcp__dot__list_pages',
+                'mcp__dot__read_page',
+                'mcp__dot__create_page',
+              ],
               permissionMode: 'default',
               abortController: controller,
-              canUseTool: async () => ({
-                behavior: 'deny',
-                message:
-                  'Tools are disabled for this Dot until the tool bridge ships.',
-              }),
+              canUseTool: async (toolName, toolInput) =>
+                toolName.startsWith('mcp__dot__')
+                  ? { behavior: 'allow', updatedInput: toolInput }
+                  : {
+                      behavior: 'deny',
+                      message: "Only this Dot's own data tools are enabled.",
+                    },
               ...(resume ? { resume } : {}),
             },
           });
 
           for await (const message of run) {
             if (message.type === 'system' && message.subtype === 'init') {
-              this.sessions.setThreadSession(input.threadId, message.session_id);
+              this.workspace.setThreadSession(input.threadId, message.session_id);
             } else if (message.type === 'assistant') {
               for (const block of message.message.content) {
-                if (block.type !== 'text' || !block.text) continue;
-                const messageId = randomUUID();
-                emit({
-                  type: EventType.TEXT_MESSAGE_START,
-                  messageId,
-                  role: 'assistant',
-                });
-                emit({
-                  type: EventType.TEXT_MESSAGE_CONTENT,
-                  messageId,
-                  delta: block.text,
-                });
-                emit({ type: EventType.TEXT_MESSAGE_END, messageId });
+                if (block.type === 'text' && block.text) {
+                  const messageId = randomUUID();
+                  emit({
+                    type: EventType.TEXT_MESSAGE_START,
+                    messageId,
+                    role: 'assistant',
+                  });
+                  emit({
+                    type: EventType.TEXT_MESSAGE_CONTENT,
+                    messageId,
+                    delta: block.text,
+                  });
+                  emit({ type: EventType.TEXT_MESSAGE_END, messageId });
+                } else if (block.type === 'tool_use') {
+                  emit({
+                    type: EventType.TOOL_CALL_START,
+                    toolCallId: block.id,
+                    toolCallName: block.name,
+                  });
+                  emit({
+                    type: EventType.TOOL_CALL_ARGS,
+                    toolCallId: block.id,
+                    delta: JSON.stringify(block.input ?? {}),
+                  });
+                  emit({ type: EventType.TOOL_CALL_END, toolCallId: block.id });
+                }
               }
             } else if (message.type === 'result') {
-              this.sessions.setThreadSession(input.threadId, message.session_id);
+              this.workspace.setThreadSession(input.threadId, message.session_id);
               if (message.subtype !== 'success') {
                 emit({
                   type: EventType.RUN_ERROR,
