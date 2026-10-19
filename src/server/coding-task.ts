@@ -101,7 +101,13 @@ export async function runCodingTask(params: {
     if (!dirty) throw new Error('The coding agent produced no changes.');
 
     git(['add', '-A'], worktree);
-    git(['commit', '-m', `${params.task.slice(0, 60)} (dots coding agent)`], worktree);
+    const subject = params.task
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase()
+      .replace(/[.:]+$/, '')
+      .slice(0, 68);
+    git(['commit', '-m', `chore: ${subject}`], worktree);
     git(['push', '-u', 'origin', branch], worktree);
 
     const prUrl = execFileSync(
