@@ -24,7 +24,8 @@ export class WorkspaceStore {
       CREATE TABLE IF NOT EXISTS thread_bindings(id TEXT PRIMARY KEY, dotId TEXT NOT NULL, ownerId TEXT NOT NULL, title TEXT NOT NULL, createdAt INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS task_threads(taskId TEXT PRIMARY KEY, threadId TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS calls(id TEXT PRIMARY KEY, threadId TEXT NOT NULL, startedAt INTEGER NOT NULL, endedAt INTEGER, status TEXT NOT NULL, transcript TEXT NOT NULL, error TEXT);
-      CREATE TABLE IF NOT EXISTS captures(threadId TEXT PRIMARY KEY, value TEXT NOT NULL);`);
+      CREATE TABLE IF NOT EXISTS captures(threadId TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS dot_sessions(threadId TEXT PRIMARY KEY, sessionId TEXT NOT NULL, updatedAt INTEGER NOT NULL);`);
     for (const [table, column, definition] of [
       ['dots', 'learningContainerId', 'TEXT'],
       ['dots', 'skillDeliveryEnabled', 'INTEGER NOT NULL DEFAULT 0'],
@@ -83,6 +84,20 @@ export class WorkspaceStore {
   }
   close() {
     this.db.close();
+  }
+  getThreadSession(threadId: string): string | undefined {
+    const row = this.db
+      .prepare('SELECT sessionId FROM dot_sessions WHERE threadId=?')
+      .get(threadId);
+    return row ? String(row.sessionId) : undefined;
+  }
+  setThreadSession(threadId: string, sessionId: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO dot_sessions(threadId, sessionId, updatedAt) VALUES(?, ?, ?)
+         ON CONFLICT(threadId) DO UPDATE SET sessionId=excluded.sessionId, updatedAt=excluded.updatedAt`,
+      )
+      .run(threadId, sessionId, Date.now());
   }
   spaces(): Space[] {
     return this.db

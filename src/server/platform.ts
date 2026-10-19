@@ -56,7 +56,10 @@ export class Platform {
           Object.fromEntries(
             workspace
               .dots()
-              .map((dot) => [dot.id, new ClaudeCodeDotAgent(dot, config)]),
+              .map((dot) => [
+                dot.id,
+                new ClaudeCodeDotAgent(dot, config, workspace),
+              ]),
           ),
       });
       this.handler = createCopilotHonoHandler({

@@ -9,7 +9,15 @@ const dot = {
   instructions: 'You are a concise test Dot. Reply in exactly one short sentence.',
 } as Dot;
 
-const agent = new ClaudeCodeDotAgent(dot, {} as PlatformConfig);
+const sessions = new Map<string, string>();
+const store = {
+  getThreadSession: (threadId: string) => sessions.get(threadId),
+  setThreadSession: (threadId: string, sessionId: string) => {
+    sessions.set(threadId, sessionId);
+  },
+};
+
+const agent = new ClaudeCodeDotAgent(dot, {} as PlatformConfig, store);
 
 const input = {
   threadId: 'verify-thread',

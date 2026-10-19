@@ -8,7 +8,10 @@ import type { PlatformConfig } from './platform-config.js';
 
 const DEFAULT_MODEL = 'claude-opus-4-8';
 
-const threadSessions = new Map<string, string>();
+export interface ThreadSessionStore {
+  getThreadSession(threadId: string): string | undefined;
+  setThreadSession(threadId: string, sessionId: string): void;
+}
 
 function latestUserText(messages: RunAgentInput['messages']): string {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -31,12 +34,13 @@ export class ClaudeCodeDotAgent extends AbstractAgent {
   constructor(
     private readonly dot: Dot,
     private readonly platformConfig: PlatformConfig,
+    private readonly sessions: ThreadSessionStore,
   ) {
     super({ agentId: dot.id });
   }
 
   clone() {
-    return new ClaudeCodeDotAgent(this.dot, this.platformConfig);
+    return new ClaudeCodeDotAgent(this.dot, this.platformConfig, this.sessions);
   }
 
   abortRun() {
@@ -47,7 +51,7 @@ export class ClaudeCodeDotAgent extends AbstractAgent {
     return new Observable<BaseEvent>((subscriber) => {
       const controller = new AbortController();
       this.controller = controller;
-      const resume = threadSessions.get(input.threadId);
+      const resume = this.sessions.getThreadSession(input.threadId);
 
       const emit = (event: Record<string, unknown>) =>
         subscriber.next(event as BaseEvent);
@@ -81,7 +85,7 @@ export class ClaudeCodeDotAgent extends AbstractAgent {
 
           for await (const message of run) {
             if (message.type === 'system' && message.subtype === 'init') {
-              threadSessions.set(input.threadId, message.session_id);
+              this.sessions.setThreadSession(input.threadId, message.session_id);
             } else if (message.type === 'assistant') {
               for (const block of message.message.content) {
                 if (block.type !== 'text' || !block.text) continue;
@@ -99,7 +103,7 @@ export class ClaudeCodeDotAgent extends AbstractAgent {
                 emit({ type: EventType.TEXT_MESSAGE_END, messageId });
               }
             } else if (message.type === 'result') {
-              threadSessions.set(input.threadId, message.session_id);
+              this.sessions.setThreadSession(input.threadId, message.session_id);
               if (message.subtype !== 'success') {
                 emit({
                   type: EventType.RUN_ERROR,
