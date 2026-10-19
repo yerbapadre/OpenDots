@@ -68,6 +68,7 @@ export class ClaudeCodeDotAgent extends AbstractAgent {
               model: DEFAULT_MODEL,
               systemPrompt: this.dot.instructions,
               settingSources: [],
+              tools: [],
               mcpServers: {
                 dot: createDotMcpServer(this.dot, this.workspace),
               },
