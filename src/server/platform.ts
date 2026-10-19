@@ -173,24 +173,27 @@ export class Platform {
     this.requireReady();
     if (!this.workspace.dot(dotId)) throw new Error('Dot not found.');
     const id = randomUUID();
-    try {
-      await this.intelligence!.createThread({
-        threadId: id,
-        userId: this.workspace.ownerId,
-        agentId: dotId,
-        name: title,
-      });
-    } catch {
-      throw new Error(
-        'Intelligence could not create this conversation. Check the runtime key and connection.',
-      );
+    if (this.intelligence) {
+      try {
+        await this.intelligence.createThread({
+          threadId: id,
+          userId: this.workspace.ownerId,
+          agentId: dotId,
+          name: title,
+        });
+      } catch {
+        throw new Error(
+          'Intelligence could not create this conversation. Check the runtime key and connection.',
+        );
+      }
     }
     return this.workspace.bindThread(id, dotId, title);
   }
   async history(threadId: string): Promise<string> {
     this.requireReady();
     this.workspace.requireThread(threadId);
-    const history = await this.intelligence!.getThreadMessages({
+    if (!this.intelligence) return '';
+    const history = await this.intelligence.getThreadMessages({
       threadId,
       userId: this.workspace.ownerId,
     });
