@@ -58,7 +58,7 @@ export class Platform {
               .dots()
               .map((dot) => [
                 dot.id,
-                new ClaudeCodeDotAgent(dot, config, workspace),
+                new ClaudeCodeDotAgent(dot, config, workspace, this.computers),
               ]),
           ),
       });

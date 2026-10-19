@@ -6,7 +6,9 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { Dot } from '../shared/types.js';
 import type { PlatformConfig } from './platform-config.js';
 import type { WorkspaceStore } from './workspace.js';
+import type { ComputerService } from './computer-service.js';
 import { createDotMcpServer } from './dot-tools.js';
+import { createComputerMcpServer } from './computer-mcp.js';
 
 const DEFAULT_MODEL = 'claude-opus-4-8';
 
@@ -32,12 +34,18 @@ export class ClaudeCodeDotAgent extends AbstractAgent {
     private readonly dot: Dot,
     private readonly platformConfig: PlatformConfig,
     private readonly workspace: WorkspaceStore,
+    private readonly computers: ComputerService,
   ) {
     super({ agentId: dot.id });
   }
 
   clone() {
-    return new ClaudeCodeDotAgent(this.dot, this.platformConfig, this.workspace);
+    return new ClaudeCodeDotAgent(
+      this.dot,
+      this.platformConfig,
+      this.workspace,
+      this.computers,
+    );
   }
 
   abortRun() {
@@ -71,6 +79,7 @@ export class ClaudeCodeDotAgent extends AbstractAgent {
               tools: [],
               mcpServers: {
                 dot: createDotMcpServer(this.dot, this.workspace),
+                computer: createComputerMcpServer(this.dot.id, this.computers),
               },
               allowedTools: [
                 'mcp__dot__list_spaces',
