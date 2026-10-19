@@ -5,6 +5,8 @@ import { randomUUID } from 'node:crypto';
 import {
   CopilotKitIntelligence,
   CopilotRuntime,
+  CopilotSseRuntime,
+  InMemoryAgentRunner,
   createCopilotHonoHandler,
   type CopilotHonoApp,
 } from '@copilotkit/runtime/v2';
@@ -13,6 +15,7 @@ export { slackIdentity } from './slack-channel.js';
 import { Store } from './store.js';
 import { WorkspaceStore } from './workspace.js';
 import { DotAgent } from './dot-agent.js';
+import { EchoAgent } from './echo-agent.js';
 import { runThreadTurn } from './headless.js';
 import {
   INTELLIGENCE_KEY_MISSING_LABEL,
@@ -46,7 +49,23 @@ export class Platform {
       this.requireReady();
       return this.intelligence!;
     });
-    if (!config.intelligenceKey) return;
+    if (!config.intelligenceKey) {
+      const localRuntime = new CopilotSseRuntime({
+        runner: new InMemoryAgentRunner(),
+        agents: async () =>
+          Object.fromEntries(
+            workspace
+              .dots()
+              .map((dot) => [dot.id, new EchoAgent({ agentId: dot.id })]),
+          ),
+      });
+      this.handler = createCopilotHonoHandler({
+        runtime: localRuntime,
+        basePath: '/api/copilotkit',
+        cors: { origin: [] },
+      });
+      return;
+    }
     this.intelligence = new CopilotKitIntelligence({
       apiKey: config.intelligenceKey,
       apiUrl: config.intelligenceApiUrl,

@@ -73,17 +73,20 @@ export interface PlatformConfig extends WebConfig {
   slackDotId?: string;
   runtimeUrl: string;
   ownerToken?: string;
+  localRuntime?: boolean;
 }
 export function setupStatus(
   config: PlatformConfig,
   slack = 'not_configured',
   activationFailed = false,
 ): SetupStatus {
-  const missing = [
-    !config.intelligenceKey && INTELLIGENCE_KEY_MISSING_LABEL,
-    !config.apiKey && 'OPENAI_API_KEY',
-    !config.model && 'OPENAI_MODEL',
-  ].filter((item): item is string => !!item);
+  const missing = config.localRuntime
+    ? []
+    : [
+        !config.intelligenceKey && INTELLIGENCE_KEY_MISSING_LABEL,
+        !config.apiKey && 'OPENAI_API_KEY',
+        !config.model && 'OPENAI_MODEL',
+      ].filter((item): item is string => !!item);
   const declaredSlack = !!(
     config.slackChannel &&
     config.slackTeam &&
@@ -97,8 +100,8 @@ export function setupStatus(
       ? 'setup_required'
       : 'not_configured';
   return {
-    intelligence: !!config.intelligenceKey,
-    model: !!(config.apiKey && config.model),
+    intelligence: config.localRuntime ? true : !!config.intelligenceKey,
+    model: config.localRuntime ? true : !!(config.apiKey && config.model),
     browser: !!(config.browserUrl && config.browserSecret),
     voice: !!(config.voiceKey && config.voiceModel && !missing.length),
     composio: !!config.composioApiKey,
