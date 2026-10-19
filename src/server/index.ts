@@ -62,6 +62,7 @@ const config: PlatformConfig = {
   runtimeUrl: `http://${host === '::1' ? '[::1]' : '127.0.0.1'}:${port}/api/copilotkit`,
   ownerToken,
 };
+process.env.COPILOTKIT_TELEMETRY_DISABLED ??= 'true';
 const platform = new Platform(store, workspace, config);
 const researchConfig = {
   mode: 'live' as const,
