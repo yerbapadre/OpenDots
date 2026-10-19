@@ -5,6 +5,7 @@ import { ComputerService } from './computer-service.js';
 import type { PlatformConfig } from './platform-config.js';
 import { dotToolDefs } from './dot-tools.js';
 import { computerToolDefs } from './computer-mcp.js';
+import { codingToolDefs } from './coding-tools.js';
 
 const dotId = process.env.DOT_ID;
 if (!dotId) throw new Error('DOT_ID is required to run the Dot MCP server.');
@@ -31,7 +32,11 @@ const computers = new ComputerService(workspace, config, () => false);
 const server = createSdkMcpServer({
   name: 'dot',
   version: '0.1.0',
-  tools: [...dotToolDefs(dot, workspace), ...computerToolDefs(dot.id, computers)],
+  tools: [
+    ...dotToolDefs(dot, workspace),
+    ...computerToolDefs(dot.id, computers),
+    ...codingToolDefs(),
+  ],
 });
 
 await server.instance.connect(new StdioServerTransport());

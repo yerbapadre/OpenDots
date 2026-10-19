@@ -64,6 +64,7 @@ export class ClaudeCliDotAgent extends AbstractAgent {
           command: process.execPath,
           args: ['--import', 'tsx', MCP_SERVER],
           env: {
+            ...process.env,
             DOT_ID: this.dot.id,
             DATABASE_PATH: process.env.DATABASE_PATH ?? 'data/opendots.sqlite',
             OWNER_ID: process.env.OWNER_ID ?? 'opendots-owner',
