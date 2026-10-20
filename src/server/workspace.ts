@@ -1,4 +1,5 @@
 import { ComputerStore } from './computer-store.js';
+import { CodingTaskStore } from './coding-task-store.js';
 import { ConnectionStore } from './connection-store.js';
 import { Pages } from './pages.js';
 import { DatabaseSync } from 'node:sqlite';
@@ -6,11 +7,23 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { validateLearningSettings } from '../shared/learning.js';
-import type { CallReceipt, Conversation, Dot, Space } from '../shared/types.js';
+import type {
+  CallReceipt,
+  Conversation,
+  Dot,
+  DotIcon,
+  Space,
+} from '../shared/types.js';
 export class WorkspaceStore {
   private db: DatabaseSync;
+  // Shared SQLite handle, for subsystems that persist alongside the workspace
+  // (e.g. durable agent-run history in local mode).
+  get database(): DatabaseSync {
+    return this.db;
+  }
   readonly pages: Pages;
   readonly computers: ComputerStore;
+  readonly codingTasks: CodingTaskStore;
   readonly connections: ConnectionStore;
   constructor(
     path: string,
@@ -33,6 +46,7 @@ export class WorkspaceStore {
       ['dots', 'composioToolkits', "TEXT NOT NULL DEFAULT '[]'"],
       ['dots', 'composioSessionId', 'TEXT'],
       ['dots', 'composioPolicyHash', 'TEXT'],
+      ['dots', 'icon', 'TEXT'],
       ['thread_bindings', 'learningContainerId', 'TEXT'],
     ]) {
       if (
@@ -57,6 +71,7 @@ export class WorkspaceStore {
         COMMIT;`);
     }
     this.computers = new ComputerStore(this.db);
+    this.codingTasks = new CodingTaskStore(this.db);
     this.connections = new ConnectionStore(this.db);
     this.pages = new Pages(this.db, (id) =>
       this.spaces().some((space) => space.id === id),
@@ -149,6 +164,7 @@ export class WorkspaceStore {
     skillDeliveryEnabled = false,
     appsAllowed = false,
     composioToolkits: string[] = [],
+    icon: DotIcon | null = null,
   ): Dot {
     this.validateSpaceAccess(spaceId, spaceIds);
     validateLearningSettings(learningContainerId, skillDeliveryEnabled);
@@ -157,6 +173,7 @@ export class WorkspaceStore {
       spaceId,
       spaceIds: [...new Set(spaceIds)].sort(),
       name,
+      icon,
       instructions,
       researchAllowed,
       memoryAllowed,
@@ -172,7 +189,7 @@ export class WorkspaceStore {
     try {
       this.db
         .prepare(
-          'INSERT INTO dots (id, spaceId, name, instructions, researchAllowed, memoryAllowed, createdAt, learningContainerId, skillDeliveryEnabled, appsAllowed, composioToolkits) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO dots (id, spaceId, name, instructions, researchAllowed, memoryAllowed, createdAt, learningContainerId, skillDeliveryEnabled, appsAllowed, composioToolkits, icon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         )
         .run(
           dot.id,
@@ -186,6 +203,7 @@ export class WorkspaceStore {
           +skillDeliveryEnabled,
           +appsAllowed,
           JSON.stringify(dot.composioToolkits),
+          icon,
         );
       for (const id of dot.spaceIds)
         this.db.prepare('INSERT INTO dot_spaces VALUES (?, ?)').run(dot.id, id);
@@ -221,6 +239,7 @@ export class WorkspaceStore {
     > & {
       spaceId?: string;
       spaceIds?: string[];
+      icon?: DotIcon | null;
       learningContainerId?: string | null;
       skillDeliveryEnabled?: boolean;
     },
@@ -237,11 +256,12 @@ export class WorkspaceStore {
     const skillDeliveryEnabled =
       patch.skillDeliveryEnabled ?? current.skillDeliveryEnabled ?? false;
     validateLearningSettings(learningContainerId, skillDeliveryEnabled);
+    const icon = patch.icon === undefined ? (current.icon ?? null) : patch.icon;
     this.db.exec('BEGIN');
     try {
       this.db
         .prepare(
-          'UPDATE dots SET name=?, instructions=?, researchAllowed=?, memoryAllowed=?, learningContainerId=?, skillDeliveryEnabled=?, appsAllowed=?, composioToolkits=? WHERE id=?',
+          'UPDATE dots SET name=?, instructions=?, researchAllowed=?, memoryAllowed=?, learningContainerId=?, skillDeliveryEnabled=?, appsAllowed=?, composioToolkits=?, icon=? WHERE id=?',
         )
         .run(
           patch.name,
@@ -252,6 +272,7 @@ export class WorkspaceStore {
           +skillDeliveryEnabled,
           +patch.appsAllowed,
           JSON.stringify([...new Set(patch.composioToolkits)].sort()),
+          icon,
           id,
         );
       this.db

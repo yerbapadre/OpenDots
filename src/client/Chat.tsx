@@ -6,6 +6,8 @@ import {
 } from '../shared/connection-types';
 import { ConnectionActionCard } from './ConnectionActionCard';
 import { contextualMessage, type PageContext } from './page-context';
+import { codingTaskNudgePrefix } from '../shared/coding-task';
+import { subscribeCodingTasks } from './coding-task-stream';
 import { api } from './api';
 import type { Page } from '../server/pages';
 import { useEffect, useRef, useState } from 'react';
@@ -147,6 +149,34 @@ export function Chat({
       active = false;
     };
   }, [agent, copilotkit, isReady]);
+  // When a background coding task for this thread finishes, nudge the Dot to
+  // report it live. The server injects the actual result as a next-turn
+  // notice, so a skipped nudge (busy, not loaded) is still delivered on the
+  // user's next message.
+  const idleRef = useRef({ ready: false });
+  idleRef.current = { ready: loaded && !running && !paused };
+  useEffect(() => {
+    const controller = new AbortController();
+    subscribeCodingTasks((task) => {
+      if (task.threadId !== thread.id || task.status === 'running') return;
+      if (!idleRef.current.ready) return;
+      setRunning(true);
+      agent.addMessage({
+        id: `${codingTaskNudgePrefix}${crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`}`,
+        role: 'user',
+        content:
+          'A background coding task from this conversation just finished. Report the result.',
+      });
+      void copilotkit
+        .runAgent({ agent })
+        .then(() => onSaved())
+        .catch(() => {
+          /* the next-turn notice still carries the result */
+        })
+        .finally(() => setRunning(false));
+    }, controller.signal);
+    return () => controller.abort();
+  }, [agent, copilotkit, thread.id, onSaved]);
   const send = async (text: string) => {
     if (!text.trim() || running || !loaded || !contextReady || paused) return;
     setError('');
@@ -263,6 +293,7 @@ export function Chat({
       <header className="chat-persona">
         <Mascot
           identity={dot.id}
+          icon={dot.icon}
           name={dot.name}
           small
           state={running ? 'working' : paused ? 'paused' : 'idle'}

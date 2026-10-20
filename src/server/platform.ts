@@ -1,3 +1,5 @@
+import { installAgentPersistence } from './agent-persistence.js';
+import { CodingTaskService } from './coding-task-service.js';
 import { ComputerService } from './computer-service.js';
 import { ConnectionService } from './connections.js';
 import { PageService } from './page-service.js';
@@ -31,6 +33,7 @@ export class Platform {
   readonly setupTelemetry: SetupTelemetry;
   readonly pages: PageService;
   readonly computers: ComputerService;
+  readonly codingTasks: CodingTaskService;
   readonly connections: ConnectionService;
   readonly intelligence?: CopilotKitIntelligence;
   readonly handler?: CopilotHonoApp;
@@ -45,12 +48,17 @@ export class Platform {
       config,
       () => store.settings().paused,
     );
+    this.codingTasks = new CodingTaskService(workspace.codingTasks);
     this.connections = new ConnectionService(workspace.connections);
     this.pages = new PageService(workspace, () => {
       this.requireReady();
       return this.intelligence!;
     });
     if (!config.intelligenceKey) {
+      // Durable transcripts for local mode: rehydrate persisted runs into the
+      // in-memory store and persist new ones. Must run before the runtime
+      // serves any connect/replay request.
+      installAgentPersistence(workspace.database);
       const localRuntime = new CopilotSseRuntime({
         runner: new InMemoryAgentRunner(),
         agents: async () =>
@@ -60,7 +68,13 @@ export class Platform {
               .map((dot) => [
                 dot.id,
                 config.cliAgent
-                  ? new ClaudeCliDotAgent(dot, config, workspace, this.computers)
+                  ? new ClaudeCliDotAgent(
+                      dot,
+                      config,
+                      workspace,
+                      this.computers,
+                      this.codingTasks,
+                    )
                   : new ClaudeCodeDotAgent(
                       dot,
                       config,

@@ -9,6 +9,10 @@ import type { Dot } from '../shared/types.js';
 import type { PlatformConfig } from './platform-config.js';
 import type { WorkspaceStore } from './workspace.js';
 import type { ComputerService } from './computer-service.js';
+import type { CodingTaskService } from './coding-task-service.js';
+import { describeCodingTask } from '../shared/coding-task.js';
+import { externalMcp } from './external-mcp.js';
+import { createRunLog } from './run-log.js';
 
 const DEFAULT_MODEL = 'claude-opus-4-8';
 const MCP_SERVER = resolve(
@@ -39,6 +43,7 @@ export class ClaudeCliDotAgent extends AbstractAgent {
     private readonly platformConfig: PlatformConfig,
     private readonly workspace: WorkspaceStore,
     private readonly computers: ComputerService,
+    private readonly codingTasks?: CodingTaskService,
   ) {
     super({ agentId: dot.id });
   }
@@ -49,6 +54,7 @@ export class ClaudeCliDotAgent extends AbstractAgent {
       this.platformConfig,
       this.workspace,
       this.computers,
+      this.codingTasks,
     );
   }
 
@@ -56,9 +62,10 @@ export class ClaudeCliDotAgent extends AbstractAgent {
     this.child?.kill('SIGINT');
   }
 
-  private mcpConfig(): string {
+  private mcpConfig(threadId: string): string {
     return JSON.stringify({
       mcpServers: {
+        ...externalMcp().servers,
         dot: {
           type: 'stdio',
           command: process.execPath,
@@ -66,6 +73,13 @@ export class ClaudeCliDotAgent extends AbstractAgent {
           env: {
             ...process.env,
             DOT_ID: this.dot.id,
+            THREAD_ID: threadId,
+            // Background coding tasks are enqueued over HTTP to the main
+            // server so they outlive this per-turn MCP subprocess.
+            OPENDOTS_API_URL: this.platformConfig.runtimeUrl.replace(
+              /\/copilotkit$/,
+              '',
+            ),
             DATABASE_PATH: process.env.DATABASE_PATH ?? 'data/opendots.sqlite',
             OWNER_ID: process.env.OWNER_ID ?? 'opendots-owner',
             COMPUTER_SUPERVISOR_URL:
@@ -85,10 +99,28 @@ export class ClaudeCliDotAgent extends AbstractAgent {
       const emit = (event: Record<string, unknown>) =>
         subscriber.next(event as BaseEvent);
       const resume = this.workspace.getThreadSession(input.threadId);
+      const log = createRunLog(`dot-${input.threadId}-${input.runId}`);
+      const userText = latestUserText(input.messages);
+      log.write(
+        `dot=${this.dot.id} model=${DEFAULT_MODEL} resume=${resume ?? 'none'}`,
+      );
+      log.write(`user> ${userText}`);
+
+      // Finished background coding tasks are reported as a notice on the next
+      // turn (the Claude Code pattern): prepend them to the prompt and mark
+      // them notified only once this turn completes successfully.
+      const notices = this.codingTasks?.pendingNotices(input.threadId) ?? [];
+      const noticeIds = notices.map((task) => task.id);
+      const prompt = notices.length
+        ? `[Background task update — relay this to the user]\n${notices
+            .map(describeCodingTask)
+            .join('\n')}\n\n${userText}`
+        : userText;
+      if (notices.length) log.write(`notices> ${noticeIds.join(', ')}`);
 
       const args = [
         '--print',
-        latestUserText(input.messages),
+        prompt,
         '--output-format',
         'stream-json',
         '--verbose',
@@ -98,11 +130,16 @@ export class ClaudeCliDotAgent extends AbstractAgent {
         '',
         '--strict-mcp-config',
         '--mcp-config',
-        this.mcpConfig(),
-        '--tools',
-        '',
+        this.mcpConfig(input.threadId),
+        // NOTE: do NOT pass `--tools ''` here. In the CLI, an empty --tools
+        // means "disable ALL tools" (including MCP), so the Dot ends up with
+        // zero tools and reports "I don't have a tool". To remove Claude Code's
+        // native host tools while keeping the `dot` MCP tools, deny the native
+        // set explicitly and allow only mcp__dot__*.
+        '--disallowedTools',
+        'Bash,BashOutput,KillShell,Read,Write,Edit,NotebookEdit,Glob,Grep,WebSearch,WebFetch,Task,TodoWrite',
         '--allowedTools',
-        'mcp__dot__*',
+        ['mcp__dot__*', ...externalMcp().allowedTools].join(','),
         '--permission-mode',
         'default',
         '--model',
@@ -186,6 +223,7 @@ export class ClaudeCliDotAgent extends AbstractAgent {
 
       child.stderr?.on('data', (chunk) => {
         stderr += String(chunk);
+        log.write(`stderr> ${String(chunk).trimEnd()}`);
       });
       child.stdout?.on('data', (chunk) => {
         buffer += String(chunk);
@@ -195,6 +233,7 @@ export class ClaudeCliDotAgent extends AbstractAgent {
           buffer = buffer.slice(newline + 1);
           newline = buffer.indexOf('\n');
           if (!line) continue;
+          log.write(`claude> ${line}`);
           try {
             handle(JSON.parse(line) as Record<string, unknown>);
           } catch {
@@ -204,6 +243,8 @@ export class ClaudeCliDotAgent extends AbstractAgent {
       });
 
       child.on('error', (error) => {
+        log.write(`spawn error: ${error.message}`);
+        log.close();
         emit({
           type: EventType.RUN_ERROR,
           message: `Failed to spawn claude: ${error.message}`,
@@ -211,17 +252,21 @@ export class ClaudeCliDotAgent extends AbstractAgent {
         subscriber.complete();
       });
       child.on('close', (code) => {
+        log.write(`claude exited ${String(code)}`);
+        log.close();
         if (!failed && code !== 0)
           emit({
             type: EventType.RUN_ERROR,
             message: `claude exited ${String(code)}: ${stderr.slice(-500)}`,
           });
-        else if (!failed)
+        else if (!failed) {
+          if (noticeIds.length) this.codingTasks?.markNotified(noticeIds);
           emit({
             type: EventType.RUN_FINISHED,
             threadId: input.threadId,
             runId: input.runId,
           });
+        }
         subscriber.complete();
       });
 

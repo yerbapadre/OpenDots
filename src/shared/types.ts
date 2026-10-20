@@ -76,12 +76,24 @@ export interface Space {
   description: string;
   createdAt: number;
 }
+/** The mascot characters shipped under /public/dots. */
+export const DOT_ICONS = [
+  'porygon',
+  'mr-mime',
+  'starmie',
+  'venusaur',
+  'tangela',
+  'dugtrio',
+] as const;
+export type DotIcon = (typeof DOT_ICONS)[number];
 export interface Dot {
   id: string;
   /** Default destination for saved pages, not ownership. */
   spaceId: string;
   spaceIds: string[];
   name: string;
+  /** Chosen mascot character. Null falls back to a stable hash of the id. */
+  icon?: DotIcon | null;
   instructions: string;
   researchAllowed: boolean;
   memoryAllowed: boolean;

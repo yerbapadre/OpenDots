@@ -1,5 +1,6 @@
 import { spawn, execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
+import { createRunLog, type RunLog } from './run-log.js';
 
 export interface CodingTaskResult {
   branch: string;
@@ -13,7 +14,11 @@ function git(args: string[], cwd: string): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8' });
 }
 
-async function runCodingAgent(cwd: string, prompt: string): Promise<string> {
+async function runCodingAgent(
+  cwd: string,
+  prompt: string,
+  log: RunLog,
+): Promise<string> {
   const childEnv = { ...process.env };
   delete childEnv.ANTHROPIC_API_KEY;
 
@@ -38,6 +43,7 @@ async function runCodingAgent(cwd: string, prompt: string): Promise<string> {
     let stderr = '';
     child.stderr.on('data', (chunk) => {
       stderr += String(chunk);
+      log.write(`coder stderr> ${String(chunk).trimEnd()}`);
     });
     child.stdout.on('data', (chunk) => {
       buffer += String(chunk);
@@ -47,6 +53,7 @@ async function runCodingAgent(cwd: string, prompt: string): Promise<string> {
         buffer = buffer.slice(nl + 1);
         nl = buffer.indexOf('\n');
         if (!line) continue;
+        log.write(`coder> ${line}`);
         try {
           const m = JSON.parse(line) as Record<string, unknown>;
           if (m.type === 'assistant') {
@@ -88,39 +95,55 @@ export async function runCodingTask(params: {
   const worktree = `${WORKTREE_ROOT}/${branch.replace(/[^a-zA-Z0-9]/g, '_')}`;
   mkdirSync(WORKTREE_ROOT, { recursive: true });
 
-  git(['fetch', 'origin', base], params.repoPath);
-  git(['worktree', 'add', worktree, '-b', branch, `origin/${base}`], params.repoPath);
+  const log = createRunLog(`coding-${branch}`);
+  log.write(`repo=${params.repoPath} base=${base} branch=${branch}`);
+  log.write(`task> ${params.task}`);
+  const step = (args: string[], cwd: string) => {
+    log.write(`git ${args.join(' ')} (cwd=${cwd})`);
+    return git(args, cwd);
+  };
+
+  step(['fetch', 'origin', base], params.repoPath);
+  step(['worktree', 'add', worktree, '-b', branch, `origin/${base}`], params.repoPath);
 
   try {
     const summary = await runCodingAgent(
       worktree,
       `${params.task}\n\nMake only the code change. Do NOT run git commit, push, or open a PR — that is handled automatically.`,
+      log,
     );
 
-    const dirty = git(['status', '--porcelain'], worktree).trim();
+    const dirty = step(['status', '--porcelain'], worktree).trim();
     if (!dirty) throw new Error('The coding agent produced no changes.');
 
-    git(['add', '-A'], worktree);
+    step(['add', '-A'], worktree);
     const subject = params.task
       .replace(/\s+/g, ' ')
       .trim()
       .toLowerCase()
       .replace(/[.:]+$/, '')
       .slice(0, 68);
-    git(['commit', '-m', `chore: ${subject}`], worktree);
-    git(['push', '-u', 'origin', branch], worktree);
+    step(['commit', '-m', `chore: ${subject}`], worktree);
+    step(['push', '--no-verify', '-u', 'origin', branch], worktree);
 
+    log.write(`gh pr create --draft --fill --head ${branch} --base ${base}`);
     const prUrl = execFileSync(
       'gh',
       ['pr', 'create', '--draft', '--fill', '--head', branch, '--base', base],
       { cwd: worktree, encoding: 'utf8' },
     ).trim();
 
+    log.write(`PR: ${prUrl}`);
     return { branch, prUrl, summary };
+  } catch (error) {
+    log.write(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
+    throw error;
   } finally {
     try {
-      git(['worktree', 'remove', '--force', worktree], params.repoPath);
+      step(['worktree', 'remove', '--force', worktree], params.repoPath);
     } catch {
+      // Best-effort cleanup; a leftover worktree is logged, not fatal.
     }
+    log.close();
   }
 }

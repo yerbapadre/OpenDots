@@ -1,3 +1,4 @@
+import { codingTaskRoutes } from './coding-task-routes.js';
 import { computerRoutes } from './computer-routes.js';
 import { connectionRoutes } from './connection-routes.js';
 import { Hono } from 'hono';
@@ -91,6 +92,11 @@ export function createApp({
     await next();
   });
   if (platform) app.route('/api', computerRoutes(platform.computers));
+  if (platform)
+    app.route(
+      '/api',
+      codingTaskRoutes(platform.codingTasks, platform.workspace),
+    );
   if (platform)
     app.route(
       '/api',

@@ -8,9 +8,11 @@ import {
   learningContainerIdSchema,
   validateLearningSettings,
 } from '../shared/learning.js';
+import { DOT_ICONS } from '../shared/types.js';
 const dotSchema = z
   .object({
     name: z.string().trim().min(1).max(40),
+    icon: z.enum(DOT_ICONS).optional(),
     instructions: z.string().trim().min(3).max(2000),
     researchAllowed: z.boolean(),
     memoryAllowed: z.boolean(),
@@ -111,6 +113,7 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
         data.data.skillDeliveryEnabled,
         data.data.appsAllowed,
         data.data.composioToolkits,
+        data.data.icon ?? null,
       ),
       201,
     );

@@ -413,7 +413,13 @@ export function App() {
                 }
                 onClick={() => chooseDot(item)}
               >
-                <Mascot identity={item.id} name={item.name} small decorative />
+                <Mascot
+                  identity={item.id}
+                  icon={item.icon}
+                  name={item.name}
+                  small
+                  decorative
+                />
                 <span>{item.name}</span>
               </button>
               <button
@@ -640,6 +646,7 @@ export function App() {
                   <div className="empty-chat-persona">
                     <Mascot
                       identity={dot.id}
+                      icon={dot.icon}
                       name={dot.name}
                       state={state.settings.paused ? 'paused' : 'idle'}
                     />

@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
-import type { Dot, Memory, State, WorkspaceState } from '../shared/types';
+import {
+  DOT_ICONS,
+  type Dot,
+  type DotIcon,
+  type Memory,
+  type State,
+  type WorkspaceState,
+} from '../shared/types';
+import { Mascot } from './Mascot';
 import { ConnectionsSection } from './ConnectionsSection';
 import {
   setThemePreference,
@@ -28,6 +36,9 @@ export function WorkspaceDialog({
 }) {
   const [name, setName] = useState(
     dialog.type === 'dot' ? (dialog.dot?.name ?? '') : '',
+  );
+  const [icon, setIcon] = useState<DotIcon>(
+    dialog.type === 'dot' ? (dialog.dot?.icon ?? DOT_ICONS[0]) : DOT_ICONS[0],
   );
   const [text, setText] = useState(
     dialog.type === 'dot'
@@ -117,9 +128,12 @@ export function WorkspaceDialog({
             ? 'Something to remember.'
             : 'Let your Dot keep time.';
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div
+      className="modal-backdrop"
+      onClick={dialog.type === 'dot' ? undefined : onClose}
+    >
       <section
-        className="modal"
+        className={dialog.type === 'dot' ? 'modal modal-wide' : 'modal'}
         role="dialog"
         aria-modal="true"
         aria-labelledby="dialog-title"
@@ -154,6 +168,7 @@ export function WorkspaceDialog({
                 spaceId: defaultSpace,
                 spaceIds,
                 name,
+                icon,
                 instructions: text,
                 researchAllowed: research,
                 memoryAllowed: memory,
@@ -209,6 +224,29 @@ export function WorkspaceDialog({
                 required
               />
             </>
+          )}
+          {dialog.type === 'dot' && (
+            <fieldset className="icon-picker-fields">
+              <legend>Icon</legend>
+              <p className="muted">Pick a look for this Dot.</p>
+              <div className="icon-picker" role="radiogroup" aria-label="Icon">
+                {DOT_ICONS.map((option) => (
+                  <label
+                    key={option}
+                    className={`icon-option ${icon === option ? 'selected' : ''}`}
+                  >
+                    <input
+                      type="radio"
+                      name="dot-icon"
+                      value={option}
+                      checked={icon === option}
+                      onChange={() => setIcon(option)}
+                    />
+                    <Mascot icon={option} name={name || 'Dot'} small decorative />
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           )}
           {dialog.type !== 'settings' && (
             <>
