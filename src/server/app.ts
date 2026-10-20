@@ -1,4 +1,5 @@
 import { codingTaskRoutes } from './coding-task-routes.js';
+import { scheduledTurnRoutes } from './scheduled-turn-routes.js';
 import { computerRoutes } from './computer-routes.js';
 import { connectionRoutes } from './connection-routes.js';
 import { Hono } from 'hono';
@@ -96,6 +97,11 @@ export function createApp({
     app.route(
       '/api',
       codingTaskRoutes(platform.codingTasks, platform.workspace),
+    );
+  if (platform?.scheduledTurns)
+    app.route(
+      '/api',
+      scheduledTurnRoutes(platform.scheduledTurns, platform.workspace),
     );
   if (platform)
     app.route(

@@ -1,5 +1,6 @@
 import { installAgentPersistence } from './agent-persistence.js';
 import { CodingTaskService } from './coding-task-service.js';
+import { ScheduledTurnService } from './scheduled-turn-service.js';
 import { ComputerService } from './computer-service.js';
 import { ConnectionService } from './connections.js';
 import { PageService } from './page-service.js';
@@ -34,6 +35,7 @@ export class Platform {
   readonly pages: PageService;
   readonly computers: ComputerService;
   readonly codingTasks: CodingTaskService;
+  readonly scheduledTurns?: ScheduledTurnService;
   readonly connections: ConnectionService;
   readonly intelligence?: CopilotKitIntelligence;
   readonly handler?: CopilotHonoApp;
@@ -59,6 +61,15 @@ export class Platform {
       // in-memory store and persist new ones. Must run before the runtime
       // serves any connect/replay request.
       installAgentPersistence(workspace.database);
+      // Proactive scheduled turns drive the CLI Dot agent server-side, so they
+      // only make sense on the local CLI path.
+      if (config.cliAgent)
+        this.scheduledTurns = new ScheduledTurnService(workspace.scheduledTurns, {
+          config,
+          workspace,
+          computers: this.computers,
+          codingTasks: this.codingTasks,
+        });
       const localRuntime = new CopilotSseRuntime({
         runner: new InMemoryAgentRunner(),
         agents: async () =>
@@ -172,6 +183,7 @@ export class Platform {
   }
   async start() {
     this.setupTelemetry.start();
+    this.scheduledTurns?.start();
     if (this.handler?.channels) {
       try {
         await this.handler.channels.ready({ timeoutMs: 15000 });
@@ -188,6 +200,7 @@ export class Platform {
     }
   }
   async stop() {
+    this.scheduledTurns?.stop();
     await this.setupTelemetry.stop();
     await this.handler?.channels?.stop();
   }

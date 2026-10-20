@@ -4,7 +4,6 @@ import { SpaceWorkspace } from './SpaceWorkspace';
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { CopilotKitProvider } from '@copilotkit/react-core/v2';
 import {
-  ArrowUp,
   ArrowUpRight,
   BookOpen,
   Clock3,
@@ -47,7 +46,7 @@ import { ResultPane } from './ResultPane';
 import { TaskRow } from './TaskPresentation';
 import { TaskActions } from './TaskActions';
 import { WorkspaceDialog, type Dialog } from './WorkspaceDialog';
-import { submitComposerOnEnter } from './chat-composer';
+import { Composer } from './Composer';
 
 function describeFailure(error: unknown, fallback: string) {
   return {
@@ -471,6 +470,41 @@ export function App() {
               setMobile(false);
             }}
             onNew={() => void newConversation()}
+            onRename={(id, current) => {
+              const title = window.prompt('Rename conversation', current);
+              if (!title || !title.trim() || title.trim() === current) return;
+              void (async () => {
+                try {
+                  await api(`/conversations/${id}`, 'PATCH', {
+                    title: title.trim(),
+                  });
+                  await refresh();
+                } catch (e) {
+                  setError(
+                    e instanceof Error ? e.message : 'Could not rename.',
+                  );
+                }
+              })();
+            }}
+            onDelete={(id, current) => {
+              if (
+                !window.confirm(
+                  `Delete "${current}"? This removes the conversation and its history.`,
+                )
+              )
+                return;
+              void (async () => {
+                try {
+                  await api(`/conversations/${id}`, 'DELETE');
+                  if (selectedThread === id) setSelectedThread(undefined);
+                  await refresh();
+                } catch (e) {
+                  setError(
+                    e instanceof Error ? e.message : 'Could not delete.',
+                  );
+                }
+              })();
+            }}
           />
         ) : (
           <div className="sidebar-empty">
@@ -693,45 +727,22 @@ export function App() {
                       </div>
                     </div>
                   )}
-                  <form
-                    className="composer"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void newConversation(prompt);
-                    }}
-                  >
-                    <textarea
-                      aria-label="Start a conversation"
-                      placeholder={
-                        configured
-                          ? `Message ${dot.name}…`
-                          : 'Your first conversation starts after setup.'
-                      }
-                      value={prompt}
-                      maxLength={4000}
-                      onChange={(e) => setPrompt(e.target.value)}
-                      onKeyDown={(e) =>
-                        submitComposerOnEnter(
-                          e,
-                          configured && !busy && !!prompt.trim(),
-                        )
-                      }
-                      disabled={!configured}
-                    />
-                    <div className="composer-bottom">
-                      <span>
-                        <MessageCircle size={14} />
-                        Text and calls, one continuing conversation
-                      </span>
-                      <button
-                        className="send-button"
-                        aria-label="Start conversation"
-                        disabled={!configured || busy || !prompt.trim()}
-                      >
-                        <ArrowUp size={19} />
-                      </button>
-                    </div>
-                  </form>
+                  <Composer
+                    value={prompt}
+                    onChange={setPrompt}
+                    onSubmit={() => void newConversation(prompt)}
+                    placeholder={
+                      configured
+                        ? `Message ${dot.name}…`
+                        : 'Your first conversation starts after setup.'
+                    }
+                    textareaLabel="Start a conversation"
+                    canSubmit={configured && !busy && !!prompt.trim()}
+                    disabled={!configured}
+                    sendLabel="Start conversation"
+                    noteIcon={<MessageCircle size={14} />}
+                    note="Text and calls, one continuing conversation"
+                  />
                   <div className="starter-suggestions">
                     {[
                       'Help me think this through',

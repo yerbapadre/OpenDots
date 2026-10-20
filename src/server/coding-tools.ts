@@ -1,42 +1,12 @@
 import { tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { describeCodingTask, type CodingTask } from '../shared/coding-task.js';
+import { callOpenDotsApi as callApi, toolText as text } from './dot-api.js';
 
 // These tools run inside the per-turn Dot MCP subprocess, which dies when the
 // turn ends. Long-running work therefore cannot execute here: spawn_coding_task
 // enqueues the task over HTTP to the long-lived main server and returns
 // immediately. The server reports completion via SSE and next-turn notices.
-
-function apiConfig() {
-  const base = process.env.OPENDOTS_API_URL;
-  if (!base)
-    throw new Error(
-      'OPENDOTS_API_URL is not configured for the Dot MCP server.',
-    );
-  const token = process.env.OWNER_TOKEN;
-  return {
-    base,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  };
-}
-
-async function callApi(path: string, init?: RequestInit): Promise<unknown> {
-  const { base, headers } = apiConfig();
-  const response = await fetch(`${base}${path}`, { ...init, headers });
-  const data = (await response.json().catch(() => ({}))) as {
-    error?: string;
-  };
-  if (!response.ok)
-    throw new Error(data.error ?? `Coding task API returned ${response.status}.`);
-  return data;
-}
-
-function text(value: string) {
-  return { content: [{ type: 'text' as const, text: value }] };
-}
 
 export function codingToolDefs() {
   const dotId = process.env.DOT_ID ?? '';

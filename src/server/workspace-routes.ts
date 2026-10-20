@@ -164,6 +164,29 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
       201,
     );
   });
+  app.patch('/conversations/:id', async (c) => {
+    const data = z
+      .object({ title: z.string().trim().min(1).max(120) })
+      .strict()
+      .safeParse(await c.req.json().catch(() => null));
+    if (!data.success)
+      return c.json({ error: 'Provide a conversation title.' }, 400);
+    try {
+      return c.json(
+        platform.workspace.renameThread(c.req.param('id'), data.data.title),
+      );
+    } catch {
+      return c.json({ error: 'Conversation not found.' }, 404);
+    }
+  });
+  app.delete('/conversations/:id', (c) => {
+    try {
+      platform.workspace.deleteThread(c.req.param('id'));
+      return c.json({ ok: true });
+    } catch {
+      return c.json({ error: 'Conversation not found.' }, 404);
+    }
+  });
   app.get('/conversations/:id/capture', (c) =>
     c.json(platform.workspace.capture(c.req.param('id'))),
   );

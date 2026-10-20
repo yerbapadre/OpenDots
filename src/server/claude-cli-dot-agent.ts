@@ -124,6 +124,10 @@ export class ClaudeCliDotAgent extends AbstractAgent {
         '--output-format',
         'stream-json',
         '--verbose',
+        // Emit partial message chunks (Anthropic SSE deltas) as they arrive so
+        // text types out live and tool-call args stream in, instead of each
+        // complete block popping in at once.
+        '--include-partial-messages',
         '--system-prompt',
         this.dot.instructions,
         '--setting-sources',
@@ -172,43 +176,90 @@ export class ClaudeCliDotAgent extends AbstractAgent {
           this.workspace.setThreadSession(input.threadId, sessionId);
       };
 
-      const handle = (message: Record<string, unknown>) => {
-        if (message.type === 'system' && message.subtype === 'init') {
-          persistSession(message.session_id);
-        } else if (message.type === 'assistant') {
-          const content =
-            (message.message as { content?: unknown[] } | undefined)?.content ??
-            [];
-          for (const raw of content) {
-            const block = raw as Record<string, unknown>;
-            if (block.type === 'text' && block.text) {
+      // With --include-partial-messages the CLI streams raw Anthropic SSE
+      // events. Each content block is identified by its index; we map text
+      // blocks to AG-UI message ids and tool blocks to tool-call ids so the
+      // START/CONTENT/END deltas line up. The final complete `assistant`
+      // message still arrives afterward and is intentionally ignored here to
+      // avoid emitting every block twice.
+      const textMessageIds = new Map<number, string>();
+      const toolCallIds = new Map<number, string>();
+
+      const handleStreamEvent = (event: Record<string, unknown>) => {
+        const index = Number(event.index);
+        switch (event.type) {
+          case 'content_block_start': {
+            const block = (event.content_block ?? {}) as Record<
+              string,
+              unknown
+            >;
+            if (block.type === 'text') {
               const messageId = randomUUID();
+              textMessageIds.set(index, messageId);
               emit({
                 type: EventType.TEXT_MESSAGE_START,
                 messageId,
                 role: 'assistant',
               });
-              emit({
-                type: EventType.TEXT_MESSAGE_CONTENT,
-                messageId,
-                delta: String(block.text),
-              });
-              emit({ type: EventType.TEXT_MESSAGE_END, messageId });
+              if (block.text)
+                emit({
+                  type: EventType.TEXT_MESSAGE_CONTENT,
+                  messageId,
+                  delta: String(block.text),
+                });
             } else if (block.type === 'tool_use') {
               const toolCallId = String(block.id);
+              toolCallIds.set(index, toolCallId);
               emit({
                 type: EventType.TOOL_CALL_START,
                 toolCallId,
                 toolCallName: String(block.name),
               });
-              emit({
-                type: EventType.TOOL_CALL_ARGS,
-                toolCallId,
-                delta: JSON.stringify(block.input ?? {}),
-              });
-              emit({ type: EventType.TOOL_CALL_END, toolCallId });
             }
+            break;
           }
+          case 'content_block_delta': {
+            const delta = (event.delta ?? {}) as Record<string, unknown>;
+            if (delta.type === 'text_delta') {
+              const messageId = textMessageIds.get(index);
+              if (messageId)
+                emit({
+                  type: EventType.TEXT_MESSAGE_CONTENT,
+                  messageId,
+                  delta: String(delta.text ?? ''),
+                });
+            } else if (delta.type === 'input_json_delta') {
+              const toolCallId = toolCallIds.get(index);
+              if (toolCallId)
+                emit({
+                  type: EventType.TOOL_CALL_ARGS,
+                  toolCallId,
+                  delta: String(delta.partial_json ?? ''),
+                });
+            }
+            break;
+          }
+          case 'content_block_stop': {
+            const messageId = textMessageIds.get(index);
+            if (messageId) {
+              emit({ type: EventType.TEXT_MESSAGE_END, messageId });
+              textMessageIds.delete(index);
+            }
+            const toolCallId = toolCallIds.get(index);
+            if (toolCallId) {
+              emit({ type: EventType.TOOL_CALL_END, toolCallId });
+              toolCallIds.delete(index);
+            }
+            break;
+          }
+        }
+      };
+
+      const handle = (message: Record<string, unknown>) => {
+        if (message.type === 'system' && message.subtype === 'init') {
+          persistSession(message.session_id);
+        } else if (message.type === 'stream_event') {
+          handleStreamEvent((message.event ?? {}) as Record<string, unknown>);
         } else if (message.type === 'result') {
           persistSession(message.session_id);
           if (message.subtype !== 'success') {
@@ -219,6 +270,8 @@ export class ClaudeCliDotAgent extends AbstractAgent {
             failed = true;
           }
         }
+        // `assistant` (complete message) is ignored: its blocks already
+        // streamed via stream_event above.
       };
 
       child.stderr?.on('data', (chunk) => {

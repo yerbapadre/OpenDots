@@ -6,6 +6,7 @@ import type { PlatformConfig } from './platform-config.js';
 import { dotToolDefs } from './dot-tools.js';
 import { computerToolDefs } from './computer-mcp.js';
 import { codingToolDefs } from './coding-tools.js';
+import { schedulingToolDefs } from './scheduling-tools.js';
 
 const dotId = process.env.DOT_ID;
 if (!dotId) throw new Error('DOT_ID is required to run the Dot MCP server.');
@@ -36,6 +37,7 @@ const server = createSdkMcpServer({
     ...dotToolDefs(dot, workspace),
     ...computerToolDefs(dot.id, computers),
     ...codingToolDefs(),
+    ...schedulingToolDefs(),
   ],
 });
 

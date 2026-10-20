@@ -1,0 +1,9 @@
+{
+  "_comment": "Non-secret behavioral flags for OpenDots, committed to the repo so coding agents (and you) can read them — unlike the gitignored .env, which holds secrets (OWNER_TOKEN, *_MCP_TOKEN, API keys) and machine-specific infra (HOST, PORT, paths). Applied as DEFAULTS at boot: anything already set in the real environment or .env wins. Empty string means the flag is available but off. Note: telemetry flags (DO_NOT_TRACK, COPILOTKIT_TELEMETRY_DISABLED) intentionally stay in .env because they must be set before module imports run.",
+  "DOTS_AGENT": "cli",
+  "WEB_SEARCH_PROVIDER": "disabled",
+  "LINEAR_MCP_READONLY": "",
+  "SLACK_MCP_ADD_MESSAGE_TOOL": "",
+  "DATABRICKS_MCP": "1",
+  "BROWSER_MCP": "1"
+}

@@ -90,6 +90,42 @@ export function externalMcp(env: NodeJS.ProcessEnv = process.env): ExternalMcp {
       );
   }
 
+  // Browser: Microsoft's Playwright MCP, headless + isolated (ephemeral context,
+  // no saved logins / no access to your real browser sessions). Opt-in.
+  // We allowlist only safe browsing tools and deliberately EXCLUDE the dangerous
+  // ones the server also exposes: browser_run_code_unsafe (RCE-equivalent),
+  // browser_evaluate (arbitrary page JS), browser_file_upload, browser_drop.
+  if (env.BROWSER_MCP === '1') {
+    servers.browser = {
+      type: 'stdio',
+      command: 'npx',
+      args: ['-y', '@playwright/mcp@latest', '--headless', '--isolated'],
+    };
+    allowedTools.push(
+      ...[
+        'browser_navigate',
+        'browser_navigate_back',
+        'browser_snapshot',
+        'browser_find',
+        'browser_take_screenshot',
+        'browser_click',
+        'browser_type',
+        'browser_fill_form',
+        'browser_select_option',
+        'browser_press_key',
+        'browser_hover',
+        'browser_wait_for',
+        'browser_tabs',
+        'browser_console_messages',
+        'browser_network_requests',
+        'browser_network_request',
+        'browser_resize',
+        'browser_handle_dialog',
+        'browser_close',
+      ].map((t) => `mcp__browser__${t}`),
+    );
+  }
+
   // Databricks: a local, read-only, schema-scoped SQL server reading the
   // service principal from ~/.databrickscfg. Opt-in (sensitive company data).
   if (env.DATABRICKS_MCP === '1') {

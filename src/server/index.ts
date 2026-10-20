@@ -1,3 +1,4 @@
+import { applyFlags } from './flags.js';
 import { webSearchProvider } from './parallel.js';
 import { createShutdown } from './shutdown.js';
 import { reportChannelFailure, safeFailure } from './slack-channel.js';
@@ -15,6 +16,9 @@ import {
   intelligenceWsUrlFromEnv,
   type PlatformConfig,
 } from './platform-config.js';
+// Apply committed, non-secret flags (opendots.flags.json) before any config is
+// read. Real env / .env values already loaded take precedence.
+applyFlags();
 const host = process.env.HOST ?? '127.0.0.1';
 const port = Number(process.env.PORT ?? 4310);
 const ownerToken = process.env.OWNER_TOKEN;

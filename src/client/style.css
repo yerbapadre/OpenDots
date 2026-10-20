@@ -1984,6 +1984,55 @@ h3 {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Conversation rows: a main open-button plus hover-revealed rename/delete. */
+.thread-row {
+  padding: 0 !important;
+  gap: 0 !important;
+}
+.thread-open {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  font-size: inherit;
+  cursor: pointer;
+  padding: 9px 4px 9px 12px;
+}
+.thread-open .thread-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.thread-open .thread-summary > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 6px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.thread-row:hover .thread-actions,
+.thread-row.active .thread-actions {
+  opacity: 1;
+}
+.thread-actions .icon-button {
+  padding: 4px;
+  color: #a0a0ac;
+}
+.thread-actions .icon-button:hover {
+  color: #596aa9;
+}
 .sidebar-empty,
 .sidebar-error {
   font-size: 10px;
@@ -2269,44 +2318,11 @@ h3 {
   line-height: 1.7;
   color: #ab9189;
 }
-.chat-composer {
-  border-top: 1px solid #ebece9;
-  padding-top: 13px;
+/* The live chat reuses the shared .composer; it just sits at the bottom and
+   hugs its content instead of being the tall new-conversation hero box. */
+.live-chat .composer {
   margin-top: auto;
-}
-.chat-compose-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 9px;
-}
-.chat-compose-row textarea {
-  border: 0;
-  background: transparent;
-  padding: 10px 12px;
-  resize: none;
-  font-size: 12px;
-  min-height: 43px;
-  max-height: 120px;
-}
-.chat-compose-row textarea::placeholder {
-  color: #b1b3be;
-}
-.chat-compose-row .send-button {
-  background: #75b9b4;
-  border-radius: 50%;
-  flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-  margin-bottom: 5px;
-}
-.chat-compose-row .icon-button {
-  margin-bottom: 5px;
-}
-.chat-compose-note {
-  font-size: 11px;
-  color: #606b63;
-  text-align: center;
-  margin-top: 12px;
+  min-height: 0;
 }
 .source-input {
   display: flex;
@@ -2542,10 +2558,6 @@ h3 {
     max-width: 87%;
     padding: 10px 14px;
   }
-  .chat-compose-note {
-    font-size: 11px;
-    line-height: 1.7;
-  }
   .chat-welcome {
     margin: 40px auto;
   }
@@ -2768,7 +2780,7 @@ h3 {
 .page-chat-panel .chat-transcript {
   padding: 20px;
 }
-.page-chat-panel .chat-composer {
+.page-chat-panel .composer {
   margin: 12px;
 }
 .page-chat-close {
@@ -3246,8 +3258,7 @@ h3 {
   box-shadow: 0 3px 14px #00000006;
   background: #fff;
 }
-.template-app .composer textarea,
-.template-app .chat-composer textarea {
+.template-app .composer textarea {
   font-size: 14px;
 }
 .template-app .starter-suggestions {
@@ -3312,12 +3323,6 @@ h3 {
 .template-app .chat-welcome p {
   font-size: 13px;
   color: #777;
-}
-.template-app .chat-composer {
-  border-radius: 22px;
-  border-color: #dedede;
-  background: #fff;
-  box-shadow: 0 3px 14px #00000006;
 }
 .template-app .chat-workspace > .result-pane {
   width: clamp(390px, 40vw, 660px);
@@ -4134,7 +4139,7 @@ h3 {
 }
 /* The composer container is itself the visible field — the textarea inside
    shouldn't draw its own focus ring hugging the cursor. */
-.template-app :is(.composer, .chat-composer) textarea:focus-visible {
+.template-app .composer textarea:focus-visible {
   outline: none;
 }
 .template-app .primary {

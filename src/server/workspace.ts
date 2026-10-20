@@ -1,5 +1,6 @@
 import { ComputerStore } from './computer-store.js';
 import { CodingTaskStore } from './coding-task-store.js';
+import { ScheduledTurnStore } from './scheduled-turn-store.js';
 import { ConnectionStore } from './connection-store.js';
 import { Pages } from './pages.js';
 import { DatabaseSync } from 'node:sqlite';
@@ -24,6 +25,7 @@ export class WorkspaceStore {
   readonly pages: Pages;
   readonly computers: ComputerStore;
   readonly codingTasks: CodingTaskStore;
+  readonly scheduledTurns: ScheduledTurnStore;
   readonly connections: ConnectionStore;
   constructor(
     path: string,
@@ -72,6 +74,7 @@ export class WorkspaceStore {
     }
     this.computers = new ComputerStore(this.db);
     this.codingTasks = new CodingTaskStore(this.db);
+    this.scheduledTurns = new ScheduledTurnStore(this.db);
     this.connections = new ConnectionStore(this.db);
     this.pages = new Pages(this.db, (id) =>
       this.spaces().some((space) => space.id === id),
@@ -332,6 +335,35 @@ export class WorkspaceStore {
     if (!thread || (dotId && thread.dotId !== dotId))
       throw new Error('Conversation does not belong to this Dot and owner.');
     return thread;
+  }
+  renameThread(id: string, title: string): Conversation {
+    this.requireThread(id);
+    this.db
+      .prepare('UPDATE thread_bindings SET title=? WHERE id=? AND ownerId=?')
+      .run(title, id, this.ownerId);
+    return this.requireThread(id);
+  }
+  deleteThread(id: string): void {
+    this.requireThread(id);
+    // Remove the binding and everything scoped to this thread. Some tables only
+    // exist in certain modes (agent_runs is local-only), so tolerate absence.
+    // coding_tasks are left intact — they record real PRs that still exist.
+    const statements = [
+      'DELETE FROM thread_bindings WHERE id=?',
+      'DELETE FROM dot_sessions WHERE threadId=?',
+      'DELETE FROM captures WHERE threadId=?',
+      'DELETE FROM calls WHERE threadId=?',
+      'DELETE FROM task_threads WHERE threadId=?',
+      'DELETE FROM scheduled_turns WHERE threadId=?',
+      'DELETE FROM agent_runs WHERE threadId=?',
+    ];
+    for (const sql of statements) {
+      try {
+        this.db.prepare(sql).run(id);
+      } catch {
+        // table may not exist in this mode; skip
+      }
+    }
   }
   bindTask(taskId: string, threadId: string) {
     this.requireThread(threadId);

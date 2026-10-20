@@ -19,16 +19,7 @@ import {
   useAgent,
   useCopilotKit,
 } from '@copilotkit/react-core/v2';
-import {
-  FilePlus,
-  ArrowUp,
-  Clock3,
-  Link2,
-  Phone,
-  PhoneOff,
-  Square,
-  X,
-} from 'lucide-react';
+import { FilePlus, Clock3, Phone, PhoneOff } from 'lucide-react';
 import {
   ComputerToolCard,
   type ComputerToolRenderProps,
@@ -38,7 +29,7 @@ import type { CallReceipt, Conversation, Dot } from '../shared/types';
 import { Mascot } from './Mascot';
 import { useVoice } from './useVoice';
 import { CallView } from './CallView';
-import { shouldSubmitComposerOnKeyDown } from './chat-composer';
+import { Composer } from './Composer';
 
 export function Chat({
   thread,
@@ -437,84 +428,30 @@ export function Chat({
         dot={dot}
         voice={voice}
       />
-      <form
-        className="chat-composer"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void send(`${source ? `From ${source}:\n\n` : ''}${draft}`);
-        }}
-      >
-        {sourceOpen && (
-          <div className="source-input">
-            <Link2 size={15} />
-            <input
-              aria-label="Source page URL"
-              type="url"
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
-              placeholder="https://example.com/page"
-            />
-            <button
-              type="button"
-              className="icon-button"
-              aria-label="Remove source"
-              onClick={() => {
-                setSourceOpen(false);
-                setSource('');
-              }}
-            >
-              <X size={14} />
-            </button>
-          </div>
-        )}
-        <div className="chat-compose-row">
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Add source page link"
-            onClick={() => setSourceOpen(!sourceOpen)}
-          >
-            <Link2 size={19} />
-          </button>
-          <textarea
-            aria-label="Message your Dot"
-            placeholder={`Message ${dot.name}…`}
-            rows={1}
-            value={draft}
-            maxLength={4000}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (shouldSubmitComposerOnKeyDown(e)) {
-                e.preventDefault();
-                e.currentTarget.form?.requestSubmit();
-              }
-            }}
-          />
-          {running ? (
-            <button
-              type="button"
-              className="send-button"
-              aria-label="Stop response"
-              onClick={() => copilotkit.stopAgent({ agent })}
-            >
-              <Square size={16} />
-            </button>
-          ) : (
-            <button
-              className="send-button"
-              aria-label="Send message"
-              disabled={!draft.trim() || !loaded || !contextReady || paused}
-            >
-              <ArrowUp size={19} />
-            </button>
-          )}
-        </div>
-        <div className="chat-compose-note">
-          {voiceReady
+      <Composer
+        value={draft}
+        onChange={setDraft}
+        onSubmit={() =>
+          void send(`${source ? `From ${source}:\n\n` : ''}${draft}`)
+        }
+        placeholder={`Message ${dot.name}…`}
+        textareaLabel="Message your Dot"
+        canSubmit={!!draft.trim() && loaded && contextReady && !paused}
+        sendLabel="Send message"
+        note={
+          voiceReady
             ? 'Text and voice, one conversation.'
-            : 'Text is ready. Voice needs separate server configuration.'}
-        </div>
-      </form>
+            : 'Text is ready. Voice needs separate server configuration.'
+        }
+        running={running}
+        onStop={() => copilotkit.stopAgent({ agent })}
+        source={{
+          open: sourceOpen,
+          onToggle: () => setSourceOpen(!sourceOpen),
+          value: source,
+          onChange: setSource,
+        }}
+      />
     </div>
   );
 }
