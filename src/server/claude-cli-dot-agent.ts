@@ -1,5 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { Observable } from 'rxjs';
@@ -19,6 +21,20 @@ const MCP_SERVER = resolve(
   dirname(fileURLToPath(import.meta.url)),
   'dot-mcp-server.ts',
 );
+
+// Each Dot works from its own home directory: its authored skills live in
+// <home>/.claude/skills and its durable scratch/memory in <home>/memory. The
+// home persists across turns (it is just a directory on disk).
+function dotHome(dotId: string): string {
+  const home = resolve(process.cwd(), 'data', 'dots', dotId);
+  mkdirSync(resolve(home, '.claude', 'skills'), { recursive: true });
+  mkdirSync(resolve(home, 'memory'), { recursive: true });
+  return home;
+}
+
+// The codebase root a Dot may read and write. Full host access by design — the
+// owner has opted out of sandboxing for now and supervises directly.
+const ACCESS_DIR = process.env.DOTS_ACCESS_DIR ?? resolve(homedir(), 'Leland');
 
 function latestUserText(messages: RunAgentInput['messages']): string {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -127,22 +143,27 @@ export class ClaudeCliDotAgent extends AbstractAgent {
         '--include-partial-messages',
         '--system-prompt',
         this.dot.instructions,
-        '--setting-sources',
-        '',
+        // No --setting-sources override: load every source by default so each
+        // Dot inherits the owner's full global Claude config — personal skills,
+        // plugins, global settings.json (hooks included), and managed policy —
+        // AND, because cwd is the Dot's own home, any skills it authors under
+        // <home>/.claude/skills. (Owner chose global inheritance over per-Dot
+        // isolation; flip by setting CLAUDE_CONFIG_DIR to the Dot's home.)
+        //
+        // The codebase the Dot may read and write, in addition to its home.
+        '--add-dir',
+        ACCESS_DIR,
         '--strict-mcp-config',
         '--mcp-config',
         this.mcpConfig(input.threadId),
-        // NOTE: do NOT pass `--tools ''` here. In the CLI, an empty --tools
-        // means "disable ALL tools" (including MCP), so the Dot ends up with
-        // zero tools and reports "I don't have a tool". To remove Claude Code's
-        // native host tools while keeping the `dot` MCP tools, deny the native
-        // set explicitly and allow only mcp__dot__*.
-        '--disallowedTools',
-        'Bash,BashOutput,KillShell,Read,Write,Edit,NotebookEdit,Glob,Grep,WebSearch,WebFetch,Task,TodoWrite',
-        '--allowedTools',
-        ['mcp__dot__*', ...externalMcp().allowedTools].join(','),
+        // Full host access by design: native tools (Bash/Read/Write/Edit/…),
+        // the Skill system, and all configured MCP tools run without prompting.
+        // The Dot is effectively a headless Claude Code instance with a role.
+        // 'auto' matches the coding-task runner (runs tools headless) while
+        // keeping more guardrails than bypassPermissions. Owner has opted out
+        // of sandboxing for now.
         '--permission-mode',
-        'default',
+        'auto',
         '--model',
         DEFAULT_MODEL,
         ...(resume ? ['--resume', resume] : []),
@@ -159,6 +180,7 @@ export class ClaudeCliDotAgent extends AbstractAgent {
       });
 
       const child = spawn('claude', args, {
+        cwd: dotHome(this.dot.id),
         env: childEnv,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
