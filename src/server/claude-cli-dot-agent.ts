@@ -74,20 +74,17 @@ export class ClaudeCliDotAgent extends AbstractAgent {
             ...process.env,
             DOT_ID: this.dot.id,
             THREAD_ID: threadId,
-            // Background coding tasks are enqueued over HTTP to the main
-            // server so they outlive this per-turn MCP subprocess.
+            // The Dot MCP subprocess is a pure HTTP client of the long-lived
+            // main server: pages/spaces, computer actions, coding tasks and
+            // scheduled turns all round-trip through its routes so this process
+            // holds no database handle or supervisor credentials. It needs only
+            // the API base and the owner token (required once requests cross a
+            // container boundary instead of loopback).
             OPENDOTS_API_URL: this.platformConfig.runtimeUrl.replace(
               /\/copilotkit$/,
               '',
             ),
-            DATABASE_PATH: process.env.DATABASE_PATH ?? 'data/opendots.sqlite',
-            OWNER_ID: process.env.OWNER_ID ?? 'opendots-owner',
-            COMPUTER_SUPERVISOR_URL:
-              this.platformConfig.computerSupervisorUrl ?? '',
-            COMPUTER_SUPERVISOR_TOKEN:
-              this.platformConfig.computerSupervisorToken ?? '',
-            COMPUTER_TOKEN: this.platformConfig.computerToken ?? '',
-            COMPUTER_NAMESPACE: this.platformConfig.computerNamespace ?? '',
+            OWNER_TOKEN: this.platformConfig.ownerToken ?? '',
           },
         },
       },

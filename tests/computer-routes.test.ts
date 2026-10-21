@@ -153,6 +153,44 @@ function upstreamFixture(responses: Record<string, unknown>) {
   return { id, app };
 }
 
+// The actions route carries an optional actor so the Dot's own MCP tools act
+// as 'agent' (blocked while paused) while the owner UI acts as 'owner'.
+it('applies the paused check to actor "agent" but not the default owner', async () => {
+  const workspace = new WorkspaceStore(':memory:', 'owner');
+  stores.push(workspace);
+  const id = workspace.dots()[0].id;
+  workspace.computers.patch(id, { enabled: true, files: true });
+  const config = {
+    baseUrl: 'https://example.com',
+    voiceName: 'voice',
+    slackUsers: [],
+    runtimeUrl: 'http://localhost',
+    computerSupervisorUrl: 'https://supervisor.example.com',
+    computerSupervisorToken: 'supervisor-token',
+    computerToken: 'computer-token',
+  };
+  const transport = () => {
+    throw new Error('transport reached');
+  };
+  const service = new ComputerService(workspace, config, () => true, transport);
+  const app = computerRoutes(service);
+  const call = (actor?: 'agent' | 'owner') =>
+    app.request(`/dots/${id}/computer/actions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'files_list', input: { path: '' }, actor }),
+    });
+
+  // 'agent' is stopped at the paused check before any network call.
+  expect(await (await call('agent')).json()).toEqual({
+    error: 'Agents are paused.',
+  });
+  // The owner (default) bypasses the pause and reaches the transport.
+  const owner = await call();
+  expect(owner.status).toBe(503);
+  expect((await owner.json()).error).not.toBe('Agents are paused.');
+});
+
 it('answers a malformed supervisor ensure response with 503, not a caller validation error', async () => {
   const { app, id } = upstreamFixture({ '/ensure': {} });
   const response = await app.request(`/dots/${id}/computer/start`, {

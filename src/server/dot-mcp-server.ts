@@ -1,41 +1,26 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
-import { WorkspaceStore } from './workspace.js';
-import { ComputerService } from './computer-service.js';
-import type { PlatformConfig } from './platform-config.js';
-import { dotToolDefs } from './dot-tools.js';
-import { computerToolDefs } from './computer-mcp.js';
+import { httpDotToolDefs } from './dot-tools.js';
+import { httpComputerToolDefs } from './computer-mcp.js';
 import { codingToolDefs } from './coding-tools.js';
 import { schedulingToolDefs } from './scheduling-tools.js';
 
+// The per-turn MCP subprocess is a pure HTTP client of the long-lived main
+// server: every tool reaches back over OPENDOTS_API_URL (authenticated with
+// OWNER_TOKEN) rather than opening the workspace database or the computer
+// supervisor directly. That keeps this process free of filesystem/DB coupling,
+// so it can run anywhere — including inside the Dot's own container.
 const dotId = process.env.DOT_ID;
 if (!dotId) throw new Error('DOT_ID is required to run the Dot MCP server.');
-
-const workspace = new WorkspaceStore(
-  process.env.DATABASE_PATH ?? 'data/opendots.sqlite',
-  process.env.OWNER_ID ?? 'opendots-owner',
-);
-const dot = workspace.dots().find((candidate) => candidate.id === dotId);
-if (!dot) throw new Error(`Dot ${dotId} not found in the workspace.`);
-
-const config = {
-  computerSupervisorUrl: process.env.COMPUTER_SUPERVISOR_URL,
-  computerSupervisorToken: process.env.COMPUTER_SUPERVISOR_TOKEN,
-  computerToken: process.env.COMPUTER_TOKEN,
-  computerNamespace: process.env.COMPUTER_NAMESPACE,
-  baseUrl: '',
-  voiceName: 'marin',
-  slackUsers: [],
-  runtimeUrl: '',
-} as PlatformConfig;
-const computers = new ComputerService(workspace, config, () => false);
+if (!process.env.OPENDOTS_API_URL)
+  throw new Error('OPENDOTS_API_URL is required to run the Dot MCP server.');
 
 const server = createSdkMcpServer({
   name: 'dot',
   version: '0.1.0',
   tools: [
-    ...dotToolDefs(dot, workspace),
-    ...computerToolDefs(dot.id, computers),
+    ...httpDotToolDefs(),
+    ...httpComputerToolDefs(dotId),
     ...codingToolDefs(),
     ...schedulingToolDefs(),
   ],

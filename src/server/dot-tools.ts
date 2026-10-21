@@ -2,6 +2,7 @@ import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import type { Dot } from '../shared/types.js';
 import type { WorkspaceStore } from './workspace.js';
+import { callOpenDotsApi as callApi } from './dot-api.js';
 
 export function dotToolDefs(dot: Dot, workspace: WorkspaceStore) {
   const spaceIds = dot.spaceIds?.length ? dot.spaceIds : [dot.spaceId];
@@ -62,4 +63,47 @@ export function createDotMcpServer(dot: Dot, workspace: WorkspaceStore) {
     version: '0.1.0',
     tools: dotToolDefs(dot, workspace),
   });
+}
+
+// HTTP-client variant for the per-turn MCP subprocess: identical tools, but
+// each reaches the long-lived main server over HTTP (Space-access is enforced
+// there) instead of opening the workspace database. The Dot id comes from the
+// subprocess environment, matching the coding/scheduling tools.
+export function httpDotToolDefs() {
+  const dotId = process.env.DOT_ID ?? '';
+  const base = `/dots/${encodeURIComponent(dotId)}`;
+  const text = (value: unknown) => ({
+    content: [{ type: 'text' as const, text: JSON.stringify(value) }],
+  });
+  return [
+    tool('list_spaces', "List this Dot's Spaces (id and name).", {}, async () =>
+      text(await callApi(`${base}/spaces`)),
+    ),
+    tool('list_pages', "List pages in this Dot's Spaces.", {}, async () =>
+      text(await callApi(`${base}/pages`)),
+    ),
+    tool(
+      'read_page',
+      'Read a page by Space id and page id.',
+      { spaceId: z.string(), pageId: z.string() },
+      async ({ spaceId, pageId }) =>
+        text(
+          await callApi(
+            `${base}/spaces/${encodeURIComponent(spaceId)}/pages/${encodeURIComponent(pageId)}`,
+          ),
+        ),
+    ),
+    tool(
+      'create_page',
+      "Create a new page in one of this Dot's Spaces.",
+      { spaceId: z.string(), title: z.string(), content: z.string() },
+      async ({ spaceId, title, content }) =>
+        text(
+          await callApi(`${base}/spaces/${encodeURIComponent(spaceId)}/pages`, {
+            method: 'POST',
+            body: JSON.stringify({ title, content }),
+          }),
+        ),
+    ),
+  ];
 }

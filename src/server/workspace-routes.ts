@@ -1,5 +1,6 @@
 import { setupInputSchema } from './setup-telemetry.js';
 import { pageRoutes } from './page-routes.js';
+import { pageInput } from './pages.js';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { Platform } from './platform.js';
@@ -55,6 +56,72 @@ export function workspaceRoutes(platform: Platform, voice: VoiceService) {
       calls: platform.workspace.calls(),
     }),
   );
+  // Dot-scoped Space/page access for a Dot's own MCP tools. Space-access is
+  // enforced here, server-side, so the per-turn MCP subprocess never touches
+  // the database and runs as a pure HTTP client (the prerequisite for running
+  // it inside the Dot's container). See httpDotToolDefs in dot-tools.ts.
+  const dotOr404 = (dotId: string) => platform.workspace.dot(dotId);
+  app.get('/dots/:dotId/spaces', (c) => {
+    const dot = dotOr404(c.req.param('dotId'));
+    if (!dot) return c.json({ error: 'Dot not found.' }, 404);
+    return c.json(
+      platform.workspace
+        .spaces()
+        .filter((space) => dot.spaceIds.includes(space.id))
+        .map((space) => ({ id: space.id, name: space.name })),
+    );
+  });
+  app.get('/dots/:dotId/pages', (c) => {
+    const dot = dotOr404(c.req.param('dotId'));
+    if (!dot) return c.json({ error: 'Dot not found.' }, 404);
+    return c.json(
+      dot.spaceIds.flatMap((spaceId) =>
+        platform.workspace.pages
+          .list(spaceId)
+          .map((page) => ({
+            id: page.id,
+            spaceId: page.spaceId,
+            title: page.title,
+          })),
+      ),
+    );
+  });
+  app.get('/dots/:dotId/spaces/:spaceId/pages/:pageId', (c) => {
+    const dot = dotOr404(c.req.param('dotId'));
+    if (!dot) return c.json({ error: 'Dot not found.' }, 404);
+    const spaceId = c.req.param('spaceId');
+    if (!platform.workspace.canAccessSpace(dot.id, spaceId))
+      return c.json(
+        { error: 'This Dot does not have access to that Space.' },
+        403,
+      );
+    const pageId = c.req.param('pageId');
+    if (!platform.workspace.pages.exists(spaceId, pageId))
+      return c.json({ error: 'Page not found in this Space.' }, 404);
+    const page = platform.workspace.pages.get(spaceId, pageId);
+    return c.json({ title: page.title, content: page.content });
+  });
+  app.post('/dots/:dotId/spaces/:spaceId/pages', async (c) => {
+    const dot = dotOr404(c.req.param('dotId'));
+    if (!dot) return c.json({ error: 'Dot not found.' }, 404);
+    const spaceId = c.req.param('spaceId');
+    if (!platform.workspace.canAccessSpace(dot.id, spaceId))
+      return c.json(
+        { error: 'This Dot does not have access to that Space.' },
+        403,
+      );
+    const data = pageInput.safeParse(await c.req.json().catch(() => null));
+    if (!data.success)
+      return c.json(
+        {
+          error:
+            'Enter a title (160 characters max) and Markdown content (100,000 max).',
+        },
+        400,
+      );
+    const page = platform.workspace.pages.create(spaceId, data.data);
+    return c.json({ id: page.id, title: page.title }, 201);
+  });
   app.post('/spaces', async (c) => {
     const data = z
       .object({

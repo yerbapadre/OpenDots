@@ -45,7 +45,15 @@ export function computerRoutes(computers: ComputerService) {
   );
   app.post('/dots/:id/computer/actions', async (c) => {
     const body = z
-      .object({ action: z.string(), input: z.unknown() })
+      .object({
+        action: z.string(),
+        input: z.unknown(),
+        // The Dot's own MCP tools act as 'agent' (subject to the paused check
+        // and permission gating in ComputerService.allowed). The owner UI omits
+        // this and acts as 'owner'. Owner-only actions (human_*) are enforced by
+        // the service, which rejects them for the 'agent' actor.
+        actor: z.enum(['agent', 'owner']).default('owner'),
+      })
       .strict()
       .parse(await c.req.json());
     return c.json(
@@ -53,7 +61,7 @@ export function computerRoutes(computers: ComputerService) {
         c.req.param('id'),
         body.action as ComputerAction,
         body.input,
-        'owner',
+        body.actor,
         c.req.raw.signal,
       ),
     );
