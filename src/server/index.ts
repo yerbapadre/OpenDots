@@ -2,6 +2,7 @@ import { applyFlags } from './flags.js';
 import { webSearchProvider } from './parallel.js';
 import { createShutdown } from './shutdown.js';
 import { reportChannelFailure, safeFailure } from './slack-channel.js';
+import { startLocalSlack, type LocalSlackHandle } from './slack-local.js';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Store } from './store.js';
@@ -122,6 +123,34 @@ app.use('*', async (c, next) => {
 app.get('/api/*', (c) => c.json({ error: 'Not found.' }, 404));
 app.use('/*', serveStatic({ root: './dist/client' }));
 app.get('*', serveStatic({ path: './dist/client/index.html' }));
+// SPIKE: self-hosted Slack coworker (Socket Mode, no CopilotKit Intelligence).
+// Only on the local path (no intelligence key), opt-in via SLACK_LOCAL_ENABLED.
+// Coexists with the proactive scheduler, which also lives on the local path.
+let localSlack: LocalSlackHandle | undefined;
+async function startLocalSlackIfEnabled(): Promise<void> {
+  if (process.env.SLACK_LOCAL_ENABLED !== 'true') return;
+  if (!config.localRuntime) {
+    reportChannelFailure('Self-hosted Slack skipped', [
+      'SLACK_LOCAL_ENABLED requires the local path (unset INTELLIGENCE_API_KEY).',
+    ]);
+    return;
+  }
+  const botToken =
+    process.env.SLACK_LOCAL_BOT_TOKEN || process.env.SLACK_MCP_XOXB_TOKEN;
+  const appToken = process.env.SLACK_LOCAL_APP_TOKEN;
+  const dotId = config.slackDotId ?? workspace.dots()[0]?.id;
+  if (!botToken || !appToken || !config.slackTeam || !config.slackUsers.length || !dotId) {
+    reportChannelFailure('Self-hosted Slack skipped', [
+      'Need SLACK_LOCAL_BOT_TOKEN (or SLACK_MCP_XOXB_TOKEN), SLACK_LOCAL_APP_TOKEN, SLACK_TEAM_ID, SLACK_USER_IDS, and a Dot.',
+    ]);
+    return;
+  }
+  localSlack = await startLocalSlack(
+    { config, workspace, computers: platform.computers, codingTasks: platform.codingTasks },
+    { botToken, appToken, teamId: config.slackTeam, userIds: config.slackUsers, dotId },
+  );
+}
+
 const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
   console.log(`OpenDots template listening on http://${host}:${info.port}`);
   runner.start();
@@ -133,10 +162,18 @@ const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
         [safeFailure(error)],
       ),
     );
+  void startLocalSlackIfEnabled().catch((error) =>
+    reportChannelFailure('Self-hosted Slack activation failed', [
+      safeFailure(error),
+    ]),
+  );
 });
 const shutdown = createShutdown({
   stopRunner: () => runner.stop(),
-  stopPlatform: () => platform.stop(),
+  stopPlatform: async () => {
+    await localSlack?.stop();
+    return platform.stop();
+  },
   closeServer: () =>
     new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),
